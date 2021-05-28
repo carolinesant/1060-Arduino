@@ -1,3 +1,12 @@
+/*
+Denne koden brukes bare til:
+- å lese av UID-ene til chippene som skal brukes i treet, slik at man kan legge dem til i progresjonsTre koden. 
+- Skrive '0' verdi til blokk4 og blokk5, slik at de er klare til å bli aktivert.
+
+Denne koden er ikke en "ordentlig" del av prototypen, men heller hvordan chippene skal være programert når de blir levert med treet. 
+Dermed har vi print-setninger til Serial i denne slik at vi kan se om det blir velykket eller ikke
+*/
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include <SPI.h>            //"Importerer" SPI og MFRC522 bibloteker
 #include <MFRC522.h>
@@ -53,23 +62,41 @@ void loop() {
   
   status = rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(rfid.uid));
   if (status != MFRC522::STATUS_OK) {
-    Serial.println(F("Autentisering ikke godkjent "));
+    Serial.println(F("Autentisering blokk4 ikke godkjent "));
     Serial.println(rfid.GetStatusCodeName(status));
     return;
   }
-  else Serial.println(F("Autentisering godkjent "));
+  else Serial.println(F("Autentisering blokk4 godkjent "));
 
 
   // Prøver å skrive over tilstand0 sin informasjon i blokk 4, og skriver ut om det var velykket eller ikke
   status = rfid.MIFARE_Write(block, tilstand0, 16);
   if (status != MFRC522::STATUS_OK) {
-    Serial.print(F("Informasjonsskriving feilet "));
+    Serial.print(F("Informasjonsskriving blokk4 feilet "));
     Serial.println(rfid.GetStatusCodeName(status));
     return;
   }
-  else Serial.println(F("Informasjonsskriving velykket! "));
+  else Serial.println(F("Informasjonsskriving blokk4 velykket! "));
 
-  rfid.MIFARE_Write(5, tilstand0, 16);
+  block = 5;
+  
+   status = rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(rfid.uid));
+  if (status != MFRC522::STATUS_OK) {
+    Serial.println(F("Autentisering blokk5 ikke godkjent "));
+    Serial.println(rfid.GetStatusCodeName(status));
+    return;
+  }
+  else Serial.println(F("Autentisering blokk5 godkjent "));
+
+
+  // Prøver å skrive over tilstand0 sin informasjon i blokk 5, og skriver ut om det var velykket eller ikke
+  status = rfid.MIFARE_Write(block, tilstand0, 16);
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Informasjonsskriving blokk5 feilet "));
+    Serial.println(rfid.GetStatusCodeName(status));
+    return;
+  }
+  else Serial.println(F("Informasjonsskriving blokk5 velykket! "));
 
   Serial.println(" ");
   rfid.PICC_HaltA(); // Halt PICC
