@@ -180,6 +180,8 @@ void lysOppTre(String uid) {
     if(uid == blad23) {digitalWrite(gren2,HIGH); digitalWrite(gren3, HIGH); }
     if(uid == blad4) digitalWrite(gren4,HIGH);
 
+    //Nullstiller antBevegelser fordi påminnelsen skal bare skje etter man har bevegd seg forbi treet 10 ganger uten å ha oppdatert progresjonen sin
+    antBevegelse = 0;
     tone(piezo,300,300);
 }
 
