@@ -1,8 +1,8 @@
 /*
-SprakcafeScanner leser informasjon fra rfid chippen (bladet) , og "aktiverer" bladet ved å bytte verdien fra '0' til '1'.
+SprakcafeScanner leser informasjon fra rfid chippen (bladet) i blokk 8, og "aktiverer" bladet ved å bytte verdien fra '0' til '1'.
 Denne informasjonen brukes av progresjonsTreet for å se om bladet er aktivert eller ikke. (Om den har blitt scannet på språkkafeen eller ikke)
 
-I tillegg sjekkes det om det finnes verdien '1' i blokk5 på bladet, dette signaliserer at bruker har gjennomført en 
+I tillegg sjekkes det om det finnes verdien '1' i blokk9 på bladet, dette signaliserer at bruker har gjennomført en 
 hel iterasjon av progresjonsTreet sitt og skal få en premie. Hvis verdien er 1, skrives den over til 0 (for å null-stille) og
 premie metoden kalles. 
 
@@ -35,15 +35,8 @@ int randomTall; //Variabel randomTall skal brukes senere for å random velge en 
 
 //variablene tilstand0 og tilstand1 skal brukes for å skrive over informasjon i blokken til chippen som blir scannet
 
-byte tilstand0[] =   {0x30,0x20,0x20,0x20,
-                      0x20,0x20,0x20,0x20,
-                      0x20,0x20,0x20,0x20,
-                      0x20,0x20,0x20,0x20};
-
-byte tilstand1[] =   {0x31,0x20,0x20,0x20,
-                      0x20,0x20,0x20,0x20,
-                      0x20,0x20,0x20,0x20,
-                      0x20,0x20,0x20,0x20};
+byte tilstand0[] =   {0x30};
+byte tilstand1[] =   {0x31};
 
 
 void setup() {
@@ -61,16 +54,10 @@ void setup() {
 
 void loop() {
     
-//Sjekker om det finnes noe som kan scannes ellers avsluttes loopen
-  if ( ! rfid.PICC_IsNewCardPresent()) {
+//Sjekker om det finnes noe som kan scannes (hvis ja prøver den å lese det) ellers avsluttes loopen
+  if ( ! rfid.PICC_IsNewCardPresent() || ! rfid.PICC_ReadCardSerial()) {
     return;
   }
-
-//Prøver å lese kortet som er funnet, hvis ikke så avsluttes loopen
-  if ( ! rfid.PICC_ReadCardSerial()) {
-    return;
-  }
-
 //Skal bruke StatusCode for å sjekke om lesing/skriving til rfid chippen er godkjent
   MFRC522::StatusCode status;
 
@@ -78,50 +65,69 @@ void loop() {
 //hvilken blokk informasjonen skal leses fra
   byte aktiveringsVerdi[18];
   byte lengde = 18;
-  byte blokk = 4;
 
-//Leser av informasjonen lagret i blokk 4 på chippen, som er bladets aktiverings informasjon
-  status = rfid.MIFARE_Read(blokk, aktiveringsVerdi, &lengde);
-  if (status != MFRC522::STATUS_OK) {
-    rfid.PICC_HaltA(); // Halt PICC
-    rfid.PCD_StopCrypto1();  // Stop encryption on PCD
-    return;
-  }
+//Sjekker om PICC typen til den leste chippen er MIFARE_1K, da er det enten brikken eller kortet som har blitt scannet
+//For chipper med MIFARE_1K må man autentisere før man prøver å lese informasjon eller skrive informasjon
+  if (rfid.PICC_GetType(rfid.uid.sak) == MFRC522::PICC_TYPE_MIFARE_1K) {
+       
+       MFRC522::MIFARE_Key key;
+       for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF;
 
-  
-//Sjekker om aktiverings verdien er 0, dersom prøves det å skriv over til tilstand1 (aktiverings verdien blir '1'), hvis det ikke går brytes loopen
-  if (char(aktiveringsVerdi[0]) == '0') {
-      status = rfid.MIFARE_Write(blokk, tilstand1, 16);
+      //Autentiserer at nøkkelen funker for blokk 8 
+      status = rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 8, &key, &(rfid.uid));
       if (status != MFRC522::STATUS_OK) {
-        rfid.PICC_HaltA(); // Halt PICC
-        rfid.PCD_StopCrypto1();  // Stop encryption on PCD
-        return;
+           rfid.PICC_HaltA(); // Halt PICC
+           rfid.PCD_StopCrypto1();  // Stop encryption on PCD
+           return;
       }
-
-//Hvis verdien ikke er '0', har ikke chippen riktig informasjon og loopen brytes
-  } else {
+  }
+  
+//Leser av informasjonen lagret i blokk 8 på chippen, som er bladets aktiverings informasjon.
+  status = rfid.MIFARE_Read(8, aktiveringsVerdi, &lengde);
+  if (status != MFRC522::STATUS_OK) { //Hvis den ikke klarer å lese av informasjonen stopper loopen
     rfid.PICC_HaltA(); // Halt PICC
     rfid.PCD_StopCrypto1();  // Stop encryption on PCD
     return;
   }
 
-//Forandrer verdien til blokk, og lager en ny byte-array for å ta vare på det som skal leses av 
-  blokk = 5;
+
+ 
+//Sjekker om aktiverings verdien er 0, dersom prøves det å skriv over til tilstand1 (aktiverings verdien blir '1'), hvis det ikke går brytes loopen
+  if (char(aktiveringsVerdi[0] == '0')){
+      
+      //Her sjekkes det om chippen er av typen MIFARE_1K (brikken eller kortet) eller ikke, siden den og Ultralight chippen bruker ulike Write metoder.
+      if (rfid.PICC_GetType(rfid.uid.sak) == MFRC522::PICC_TYPE_MIFARE_1K) status = rfid.MIFARE_Write(8, tilstand1, 16); //For brikke/kort
+      else status = rfid.MIFARE_Ultralight_Write(8, tilstand1, 4); //For Ultralight chip
+      
+      if (status != MFRC522::STATUS_OK) {
+          rfid.PICC_HaltA(); // Halt PICC
+          rfid.PCD_StopCrypto1();  // Stop encryption on PCD
+          return;
+      }
+      
+  } else { //Hvis verdien ikke er '0', har ikke chippen riktig informasjon og loopen brytes
+    rfid.PICC_HaltA(); // Halt PICC
+    rfid.PCD_StopCrypto1();  // Stop encryption on PCD
+    return;
+  }
+
+//Lager en ny byte-array for å ta vare på det som skal leses av i blokk 9
   byte vunnetVerdi[18];
 
-
-//Leser verdien til blokk 5 og lagrer det i andreLestVerdi variabelen
-  status = rfid.MIFARE_Read(blokk, vunnetVerdi, &lengde);
+//Leser verdien til blokk 9 og lagrer det i vunnetVerdi variabelen
+  status = rfid.MIFARE_Read(9, vunnetVerdi, &lengde);
   if (status != MFRC522::STATUS_OK) {
     rfid.PICC_HaltA(); // Halt PICC
     rfid.PCD_StopCrypto1();  // Stop encryption on PCD
     return;
   }
-
 
 //Sjekker om den leste verdien er 1, dermed skrives det over 0 på denne plassen og premie() metoden kalles
   if (char(vunnetVerdi[0]) == '1') {
-      status = rfid.MIFARE_Write(blokk, tilstand0, 16);
+      //Her sjekkes det igjen om PICC typen er MIFARE 1K eller ikke for å kalle riktig Write metode
+      if (rfid.PICC_GetType(rfid.uid.sak) == MFRC522::PICC_TYPE_MIFARE_1K) status = rfid.MIFARE_Write(9, tilstand0, 16); //For brikke/kort
+      else status = rfid.MIFARE_Ultralight_Write(9, tilstand0, 4); //For Ultralight chip
+      
       if (status != MFRC522::STATUS_OK) {
           rfid.PICC_HaltA(); // Halt PICC
           rfid.PCD_StopCrypto1();  // Stop encryption on PCD
@@ -129,13 +135,12 @@ void loop() {
       }
       premie();
   }
-//Så kalles lysRandom metoden som lyser et random lys
+
+//Så kalles lysRandom metoden som lyser et random lys for å vise hvilket bord man skal sitte på
   lysRandom();
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
-  
-
 }
 
 //Lyser opp et random lys og spiller av en tone for å vise bruker bordet de skal sette seg på
@@ -145,7 +150,6 @@ void lysRandom() {
   tone(piezo, 262, 500);  //Spiller en tone
   delay(4000); //Har en forsinkelse så bruker har tid til å se fargen
   digitalWrite(randomTall, LOW); //Skrur lyset av
-   
 }
 
 //Spiller en melodi og får lysene til å danse, for å signalisere at bruker har vunnet
